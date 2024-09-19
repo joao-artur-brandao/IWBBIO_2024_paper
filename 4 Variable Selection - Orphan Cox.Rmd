@@ -1,0 +1,131 @@
+---
+title: "Variable Selection - Orphan Cox"
+author: "João Brandão"
+date: "2024-03-25"
+output: html_document
+---
+
+# Loading Packages
+
+```{r load_packages}
+
+library(survival)
+library(glmSparseNet)
+
+```
+
+
+# Variable Selection
+
+```{r orphan_cox}
+
+my.alpha <- seq(0.1,0.9,0.1)
+lambda.1se.OC    <- c()
+cv_coef.OC       <- c()
+cv_var.OC        <- c()
+cv_genes.OC      <- c()
+cv_weights.OC    <- c()
+c_index_train.OC <- c()
+c_index_test.OC  <- c()
+cv_results.OC    <- c()
+
+for (i in 1:length(my.alpha)){
+  set.seed(11)
+  # cross validation
+  fit.cv.OC <- cv.glmOrphan(xdata.train, ydata.train, 
+                            family  = 'cox', 
+                            type.measure = "C",
+                            nlambda = 1000,
+                            network = 'correlation',
+                            network.options = networkOptions(cutoff = .001,                                                                                                 min.degree = .2),
+                            alpha = my.alpha[i],
+                            nfolds = 10
+                            )
+  plot(fit.cv.OC)
+  
+  lambda.1se.OC[i] <- fit.cv.OC$lambda.min
+  cv_coef.OC[i]    <- list(coef(fit.cv.OC)[which(coef(fit.cv.OC, s='lambda.min') != 0)])
+  cv_var.OC[i]     <- list(xdata.train[, which(coef(fit.cv.OC, s='lambda.min') != 0)])
+  cv_genes.OC[i]   <- list(colnames(xdata.train[, which(coef(fit.cv.OC, s='lambda.min') != 0)]))
+  cv_weights.OC[i] <- list(fit.cv.OC$penalty.factor)
+  
+  c_index_train.OC[i] <- fit.cv.OC$cvm[fit.cv.OC$lambda == fit.cv.OC$lambda.1se]
+  pred <- predict(object = fit.cv.OC, xdata.test, type="response")
+  c_index_test.OC[i] <- apply(pred, 2, Cindex, y = ydata.test)
+  cv_results.OC[i] <- list(pred)
+}
+
+```
+
+
+# Survival Curves
+
+```{r survival_curves}
+
+sc_train.OC <- list()
+sc_test.OC  <- list()
+
+
+for (i in 1:length(my.alpha)){
+title_train <- paste0("Survival Curve Train Data - OC: Alpha = ", my.alpha[i])  
+title_test  <- paste0("Survival Curve Test Data - OC: Alpha = ", my.alpha[i])
+
+# Train 
+sc_train.OC[[i]] <- separate2GroupsCox(as.vector(cv_coef.OC[i]), 
+                                       xdata.train[, unlist(cv_genes.OC[i], use.names=FALSE)], 
+                                       y_train, 
+                                       plot.title = title_train, 
+                                       legend.outside = FALSE)
+
+
+
+# Test
+sc_test.OC[[i]] <- separate2GroupsCox(as.vector(cv_coef.OC[i]),
+                                    xdata.test[, unlist(cv_genes.OC[i], use.names=FALSE)], 
+                                    y_test, 
+                                    plot.title = title_test, 
+                                    legend.outside = FALSE)
+}
+
+sc_train.OC ;sc_test.OC
+
+```
+
+
+# Log-Rank Test
+
+```{r log_rank_test}
+
+pv_train <- c()
+pv_test  <- c()
+
+for (i in 1:length(my.alpha)){
+  pv_train[i] <- sc_train.OC[[i]]$pvalue
+  pv_test[i] <- sc_test.OC[[i]]$pvalue
+}
+log_rank.OC <- cbind(my.alpha, pv_train, pv_test)
+
+log_rank.OC <- data.frame(log_rank.OC)
+colnames(log_rank.OC) <- c("Alpha Used", "P-Value Train Set", "P-Value Train Set")
+log_rank.OC
+
+```
+
+# Overall Results
+
+```{r result_table}
+
+model.name_OC <- c()
+for (i in 1:length(my.alpha)) model.name_OC[i] <- paste0("HC Model ", i) 
+
+table_OC <- cbind(model.name_OC, my.alpha, round(lambda.1se.OC, 4), lengths(cv_genes.OC), 
+                  round(c_index_train.OC, 4), round(c_index_test.OC, 4), 
+                  round(pv_train, 4), round(pv_test, 4))
+colnames(table_OC) <- c("Model", "Alpha", "Lambda", "Covariates",
+                        "C.index_train", "C.index_test",
+                        "LR.pvalue_train", "LR.pvalue_test")
+(table_OC <- data.frame(table_OC))
+
+```
+
+ best selection: 7 

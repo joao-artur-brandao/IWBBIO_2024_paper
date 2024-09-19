@@ -1,0 +1,128 @@
+---
+title: "Data Setup"
+author: "João Brandão"
+date: "2023-04-23"
+output: html_document
+---
+
+
+# Setup
+
+## Package Instalation/Loading
+
+```{r packages, message = FALSE}
+
+library(dplyr)
+library(survival)
+library(tidyr)
+library(caret)
+
+```
+
+
+## Data Loading
+
+```{r load_data, echo=FALSE}
+
+load("glioma-RNASeq-2021-classification.RData")
+load("clinical-Panglioma.RData")
+
+```
+
+
+
+# Data Tables
+
+## Gene Expression Data
+
+```{r gene_data}
+
+gene_uf <- data.frame(gbm_RNA)[,1:20501] # two last columns removed (are not gene expression information)
+dim(gene_uf)
+
+# remove variables with value 0 for all observations
+sum(colSums(gene_uf) == 0) # 437 variables have 0 in all observations
+
+xdata <- gene_uf[! colSums(gene_uf) == 0]
+xdata[1:5,1:5]
+dim(xdata)
+
+```
+
+### Remove variables with near zero variance
+
+```{r near_zero_var, eval = FALSE}
+
+nzv <- nearZeroVar(xdata, 
+            freqCut = 95/5,
+            uniqueCut = 10,
+            saveMetrics = TRUE,
+            names = TRUE,
+            foreach = FALSE,
+            allowParallel = TRUE
+            )
+
+sum(nzv$zeroVar) # 0 genes com near zero var
+
+#filt <- rownames(nzv[nzv$zeroVar == FALSE,])
+#xdata <- xdata[,colnames(xdata) %in% c(filt)]
+
+```
+
+
+## Survival Data
+
+```{r survival_data}
+
+# status: 1 = death, 0 = censored
+ydata <- data.frame(panglioma_clinic_single_omics_2021[,3:5])
+rownames(ydata) <- panglioma_clinic_single_omics_2021$Patient_ID
+
+# Joining days_to_death with days_to_last_followup into a column "time"
+ydata <- unite(ydata, "time", days_to_death:days_to_last_followup
+                   , na.rm = TRUE, remove = FALSE)
+ydata <- ydata[,2:1] 
+
+colnames(ydata) <- c("time", "status")
+
+ydata$time <- as.numeric(ydata$time)
+ydata$status <- as.factor(ydata$status)
+
+head(ydata)
+table(ydata$status)
+summary(ydata$time)
+sd(ydata$time)
+
+```
+
+## Matching rows
+
+```{r matching_rows}
+
+obs <- intersect(rownames(xdata), rownames(ydata)) # Individuals in common between the genes df and survival data df
+xdata <- xdata[rownames(xdata) %in% c(obs),]
+ydata <- ydata[rownames(ydata) %in% c(obs),]
+
+```
+
+
+
+
+## Joint Data Frame
+ 
+```{r data_frame}
+
+obs <- intersect(rownames(xdata), rownames(ydata)) # Individuals in common between the genes df and survival data df
+xdata <- xdata[rownames(xdata) %in% c(obs),]
+ydata <- ydata[rownames(ydata) %in% c(obs),]
+
+# A data frame used in the test/train split
+data <- data.frame(merge(x = ydata, y = xdata, 
+                       by = "row.names" , all.x = TRUE))
+rownames(data) <- data$Row.names
+data <- data[, -1]
+
+#View(data)
+head(data)
+
+```

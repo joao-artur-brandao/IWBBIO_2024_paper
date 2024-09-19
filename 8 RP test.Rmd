@@ -1,0 +1,147 @@
+---
+title: "RP test"
+author: "João Brandão"
+date: "2024-03-25"
+output: html_document
+---
+
+
+# Load packages
+
+```{r packages, message = FALSE}
+
+library(qvalue)
+library(ggplot2)
+library(ggrepel)
+
+```
+
+
+# Rank Products Test
+
+In order to obtain a global result concerning each one of the techniques performed in the previous section, a rank product test is going to be used. The RP Test is performed between the best models of each regularization method. The criterion for best model is firstly the C-index and then the p-value for the log-rank test (both corresponding to the test data set). First a rank matrix is going to be obtained based on the ranks of each outliers detection method.
+
+
+## Rank Matrixes
+
+```{r rank_matrix}
+
+rank.martingale_EN <- rank(-abs(as.vector(res.EN)), ties.method = "first")
+rank.martingale_HC <- rank(-abs(as.vector(res.HC)), ties.method = "first")
+rank_martingale.OC <- rank(-abs(as.vector(res.OC)), ties.method = "first")
+
+rankMat <- cbind(rank.martingale_EN, rank.martingale_HC, rank_martingale.OC)
+               
+```
+
+
+## Rank Product
+
+```{r rank_product}
+
+RankProduct = function(rankMat) {
+  return(apply(rankMat, 1, prod))
+}
+
+rankproduct <- RankProduct(rankMat)
+
+```
+
+
+## P-Values
+
+In order to obtain the p-values the algorithm proposed by Heskes (2014) was used. Notice that the p-values are based on the geometric mean of upper and lower bounds, defined recursively.
+
+The input to obtain the p-values is the following:
++ rho: the rank product matrix;
++ the number of observations, n;
++ the number of methods used, k.
+
+```{r pvalues}
+
+# input
+rho = rankproduct
+n <- dim(xdata)[1]
+k <- dim(rankMat)[2]
+
+pvaluesRP <- as.vector(rankprodbounds(rho, n, k, Delta ='geometric'))
+
+# obtaining the observations with the lowest p-values
+pvaluesRP.matrix <- cbind(pvaluesRP)
+which(pvaluesRP.matrix < 0.01) # pvalues < to 1%
+which(pvaluesRP.matrix < 0.05) # pvalues < to 5%
+
+```
+
+
+## Q-Values
+
+Perform an adjustment of the rank products p-value. The q-value of a test measures the proportion of false positives incurred (called the false discovery rate) when that particular test is called significant.
+
+```{r qvalues}
+
+qvaluesRP <- p.adjust(pvaluesRP, method = "BH")
+
+which(qvaluesRP < 0.01)
+which(qvaluesRP < 0.05)
+
+```
+
+
+# Top Outliers
+
+```{r top_outliers}
+
+outliers <- as.data.frame(cbind(ydata$time,(as.numeric(ydata$status) - 1), res.EN,
+                                     rank.martingale_EN, 
+                                     rank.martingale_HC, 
+                                     rank_martingale.OC,
+                                     round(pvaluesRP, 4), round(qvaluesRP,4)))
+
+colnames(outliers) <- c("Survival Time", "Status", "Rank EN", "Rank HC", "Rank OC", "P-Value", "Q-Value") 
+rownames(outliers) <- rownames(ydata)
+
+# Top outliers
+sort.outliers <- outliers[order(qvaluesRP) ,]
+sort.outliers
+
+```
+
+# Distribution Plot
+
+```{r outlier_distribution}
+
+q <- 0.05 ## Q-value considered ##
+
+title <- ""
+
+df <- ydata[order(ydata$time),]
+df <- cbind(df, rownames(df), 1:length(rownames(df)))
+df$status <- as.numeric(df$status) - 1
+colnames(df) <- c("Time", "Status", "Names", "Index")
+
+out <- rownames(outliers)[which(qvaluesRP < q)]
+highlight1_df <- df[which(df$Names %in% out),]
+highlight1_df <- highlight1_df[which(highlight1_df$Status == 1),]
+highlight0_df <- df[which(df$Names %in% out),]
+highlight0_df <- highlight0_df[which(highlight0_df$Status == 0),]
+
+
+out_plot <- ggplot(df, aes(x = Index, y = Time)) + 
+  geom_point(alpha = 0.2, size = 1.5) + 
+  geom_text_repel(aes(label = ifelse(Names %in% rownames(outliers)[which(qvaluesRP < q)], Names, '')),  segment.color = 'grey50', hjust = - 0.7, size = 3) +
+  geom_point(data = highlight1_df, 
+             aes(x = Index, y = Time, color="Died"), size = 2) +
+  geom_point(data = highlight0_df, 
+             aes(x = Index, y = Time, color="Lost to follow-up"), size = 2) +
+  scale_color_manual(name="Patient Status", 
+                     breaks=c("Died", "Lost to follow-up"),
+                     values=c("Died"='#ff2800', "Lost to follow-up"='#0000cd')) +
+  theme_bw() + ggtitle(title) + ylab("Survival Time (Days)") + xlab("Patient Index") + My_Theme +
+  theme(legend.position = c(.215, .79), legend.title = element_text(size=8), legend.text = element_text(size=8)) +
+  scale_x_continuous(expand = c(0, 0), limits = c(0, 210)) + 
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 2500))
+  
+out_plot
+ 
+```

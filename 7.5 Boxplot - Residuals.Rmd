@@ -1,0 +1,88 @@
+---
+title: "Boxplot - Residuals"
+author: "João Brandão"
+date: "2024-03-25"
+output: html_document
+---
+
+
+# Packages
+
+# Load packages
+
+```{r packages, message = FALSE}
+
+library(ggplot2)
+library(ggrepel)
+library(dplyr)
+
+```
+
+
+# Boxplot - Martingale Residuals
+
+Single figure with the boxplots of the three methods
+
+## Theme
+
+```{r theme_}
+
+My_Theme <- theme(
+  plot.title = element_text(size = 11, face="bold"),
+  axis.title.x = element_text(size = 10),
+  axis.text.x = element_text(size = 10),
+  axis.title.y = element_text(size = 10),
+  axis.text.y = element_text(size = 10))
+
+```
+
+## Create dataframe
+
+```{r dataframe_residuals_all}
+
+df <- c(as.vector(res.EN), as.vector(res.HC), as.vector(res.OC))
+df <- cbind(rep(names(res.EN),3),
+            df,
+            c(rep(paste("Elastic Net model"), length(df)/3), 
+                 rep(paste("Hub Cox model"), length(df)/3),
+                 rep(paste("Orphan Cox model"), length(df)/3)))
+df <- data.frame(df)
+colnames(df) <- c("patient", "residual", "model") 
+df$residual <- as.numeric(df$residual)
+df
+
+```
+
+
+## Plot
+
+```{r boxplot_residuals_all}
+
+title <- ""
+
+
+# Calculate upper and lower bounds for outliers for each model type
+outliers <- data.frame()
+for (m in unique(df$model)) {
+  model_df <- subset(df, model == m)
+  q1 <- quantile(model_df$residual, 0.25)
+  q3 <- quantile(model_df$residual, 0.75)
+  iqr <- q3 - q1
+  upper_bound <- q3 + 1.5 * iqr
+  lower_bound <- q1 - 1.5 * iqr
+  outliers <- rbind(outliers, subset(model_df, residual > upper_bound | residual < lower_bound))
+}
+
+
+# Produce the plot
+res.boxplot <- ggplot(df, aes(x = model, y = residual, fill = model)) +
+  geom_boxplot() +
+  geom_text_repel(data = outliers, aes(label = patient), hjust = -0, vjust = 0.2, size = 2.5) +
+  theme_classic() + ggtitle(title) + ylab("Residuals") + xlab("") + My_Theme + theme(aspect.ratio = 0.5 , legend.position = "none") + 
+  scale_fill_manual(breaks = c(unique(df$model)[1], unique(df$model)[2], unique(df$model)[3]),
+                    values = c("#8EE5EE", "#FFF68F", "#FF6A6A")) +
+  scale_x_discrete(position = "top")
+
+print(res.boxplot)
+
+```

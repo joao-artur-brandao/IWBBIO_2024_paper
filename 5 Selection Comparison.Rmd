@@ -1,0 +1,136 @@
+---
+title: "Selection Comparison"
+author: "João Brandão"
+date: "2023-06-07"
+output: html_document
+---
+
+# Load packages
+
+```{r packages, message = FALSE}
+
+library(ggvenn)
+library(ggplot2)
+library(ggrepel)
+library(dplyr)
+
+```
+
+# Theme
+
+```{r theme_}
+
+My_Theme <- theme(
+  plot.title = element_text(size = 11, face="bold"),
+  axis.title.x = element_text(size = 10),
+  axis.text.x = element_text(size = 10),
+  axis.title.y = element_text(size = 10),
+  axis.text.y = element_text(size = 10))
+
+```
+
+
+# Venn Diagram
+
+```{r venn_diagram}
+
+ggvenn(
+  list('Elastic Net' = cv_genes.EN[[6]],
+       'Hub Cox' = cv_genes.HC[[9]], 
+       'Orphan Cox' = cv_genes.OC[[7]]), 
+  fill_color = c("#0073C2FF", "#EFC000FF", "#009E73"),
+  show_percentage = FALSE,
+  stroke_size = 0.7, set_name_size = 4
+  )
+
+```
+  
+
+# List of exclusive genes
+
+```{r list_exclusive}
+
+(exclusive_genes.EN <- cv_genes.EN[[6]][!(cv_genes.EN[[6]] %in% cv_genes.HC[[9]] | cv_genes.EN[[6]] %in% cv_genes.OC[[7]])])
+(exclusive_genes.HC <- cv_genes.HC[[9]][!(cv_genes.HC[[9]] %in% cv_genes.EN[[6]] | cv_genes.HC[[9]] %in% cv_genes.OC[[7]])])
+(exclusive_genes.OC <- cv_genes.OC[[7]][!(cv_genes.OC[[7]] %in% cv_genes.EN[[6]] | cv_genes.OC[[7]] %in% cv_genes.HC[[9]])])
+
+```
+
+# Weights (Hub Cox & Orphan Cox)
+
+```{r weights}
+
+cv_weights.HC[[1]][which(names(cv_weights.HC[[1]]) %in% exclusive_genes.HC)]
+cv_weights.OC[[1]][which(names(cv_weights.OC[[1]]) %in% exclusive_genes.OC)]
+
+```
+
+
+# Verify if the Exclusive Genes from Hub Cox and Orphan Cox selection are Hub ou Orphans
+
+
+## Hub Cox
+
+```{r hub_genes}
+
+# library(ggplot2)
+# library(ggrepel)
+# library(dplyr)
+
+i <- 9
+
+weights.HC <- cv_weights.HC[[i]][which(names(cv_weights.HC[[i]]) %in% cv_genes.HC[[i]])]
+
+title <- paste0("Plot of Variable Weights | Hub Cox - alpha = 0.", i)
+df <- data.frame(1:length(weights.HC), cv_genes.HC[[i]], as.vector(weights.HC))
+colnames(df) <- c("Index", "Variables", "Weights")
+highlight_df <- df[which(df$Variables %in% exclusive_genes.HC),]
+
+weight_plot.HC <- ggplot(df, aes(x = Index, y = Weights)) + 
+  geom_point() + 
+  geom_point(data = highlight_df, 
+             aes(x = Index, y = Weights), 
+             color='red',
+             size=3) +
+  theme_classic() + ggtitle(title) + ylab("Weights") + My_Theme
+  
+weight_plot.HC
+
+```
+
+## Orphan Cox 
+
+```{r orphan_genes}
+
+# library(ggplot2)
+# library(ggrepel)
+# library(dplyr)
+
+My_Theme = theme(
+  plot.title = element_text(size = 16, face="bold"),
+  axis.title.x = element_text(size = 14),
+  axis.text.x = element_text(size = 10),
+  axis.title.y = element_text(size = 14),
+  axis.text.y = element_text(size = 10))
+
+
+i <- 7
+
+weights.OC <- cv_weights.OC[[i]][which(names(cv_weights.OC[[i]]) %in% cv_genes.OC[[i]])]
+
+title <- paste0("Plot of Variable Weights | Hub Cox - alpha = 0.", i)
+df <- data.frame(1:length(weights.OC), cv_genes.OC[[i]], as.vector(weights.OC))
+colnames(df) <- c("Index", "Variables", "Weights")
+highlight_df <- df[which(df$Variables %in% exclusive_genes.OC),]
+
+weight_plot.OC <- ggplot(df, aes(x = Index, y = Weights)) + 
+  geom_point() + 
+  geom_point(data = highlight_df, 
+             aes(x = Index, y = Weights), 
+             color='red',
+             size=3) +
+  theme_classic() + ggtitle(title) + ylab("Weights") + My_Theme
+  
+weight_plot.OC
+
+```

@@ -1,0 +1,184 @@
+---
+title: "Variable Selection - Elastic Net"
+author: "João Brandão"
+date: "2024-04-25"
+output: html_document
+---
+
+# Loading Packages
+
+```{r load_packages, message = FALSE}
+
+library(survival)
+library(glmSparseNet)
+library(glmnet)
+
+```
+
+
+# Variable Selection
+
+```{r elastic_net}
+
+start.time <- Sys.time()
+
+my.alpha <- seq(0.1,0.9,0.1)
+lambda.1se.EN    <- c()
+cv_coef.EN       <- c()
+cv_var.EN        <- c()
+cv_genes.EN      <- c()
+c_index_train.EN <- c()
+c_index_test.EN  <- c()
+cv_results.EN    <- c()
+fit.cv.EN <- c()
+
+for (i in 1:length(my.alpha)){
+  set.seed(11)
+  # cross validation
+  fit.cv.EN[i] <- list(cv.glmnet(xdata.train, ydata.train, 
+                         family  = 'cox', 
+                         type.measure = "C",
+                         nlambda = 1000,
+                         alpha = my.alpha[i],
+                         nfolds = 10
+                         ))
+  plot(fit.cv.EN[[i]])
+  
+  lambda.1se.EN[i] <- fit.cv.EN[[i]]$lambda.min
+  cv_coef.EN[i]    <- list(coef(fit.cv.EN[[i]])[which(coef(fit.cv.EN[[i]], s='lambda.min') != 0)])
+  cv_var.EN[i]     <- list(xdata.train[, which(coef(fit.cv.EN[[i]], s='lambda.min') != 0)])
+  cv_genes.EN[i]   <- list(colnames(xdata.train[, which(coef(fit.cv.EN[[i]], s='lambda.min') != 0)]))
+  
+  c_index_train.EN[i] <- fit.cv.EN[[i]]$cvm[fit.cv.EN[[i]]$lambda == fit.cv.EN[[i]]$lambda.min]
+  pred <- predict(object = fit.cv.EN[[i]], xdata.test, type="response")
+  c_index_test.EN[i] <- apply(pred, 2, Cindex, y = ydata.test)
+  cv_results.EN[i] <- list(pred)
+}
+
+end.time <- Sys.time()
+time.taken <- end.time - start.time
+time.taken
+
+```
+
+
+# Survival curves
+
+```{r survival_curves}
+
+sc_train.EN <- list()
+sc_test.EN  <- list()
+
+
+for (i in 1:length(my.alpha)){
+title_train <- paste0("Survival Curve Train Data - EN: Alpha = ", my.alpha[i])  
+title_test  <- paste0("Survival Curve Test Data - EN: Alpha = ", my.alpha[i])
+
+# Train
+sc_train.EN[[i]] <- separate2GroupsCox(as.vector(cv_coef.EN[i]), 
+                                       xdata.train[, unlist(cv_genes.EN[i], use.names=FALSE)], 
+                                       y_train, 
+                                       plot.title = title_train, 
+                                       legend.outside = FALSE)
+
+# Test
+sc_test.EN[[i]] <- separate2GroupsCox(as.vector(cv_coef.EN[i]),
+                                    xdata.test[, unlist(cv_genes.EN[i], use.names=FALSE)], 
+                                    y_test, 
+                                    plot.title = title_test, 
+                                    legend.outside = FALSE)
+}
+
+sc_train.EN ;sc_test.EN
+
+
+```
+
+
+# Log-Rank Test
+
+```{r log_rank_test}
+
+pv_train <- c()
+pv_test  <- c()
+
+for (i in 1:length(my.alpha)){
+  pv_train[i] <- sc_train.EN[[i]]$pvalue
+  pv_test[i] <- sc_test.EN[[i]]$pvalue
+}
+log_rank.EN <- cbind(my.alpha, pv_train, pv_test)
+
+log_rank.EN <- data.frame(log_rank.EN)
+colnames(log_rank.EN) <- c("Alpha Used", "P-Value Train Set", "P-Value Test Set")
+log_rank.EN
+
+```
+
+
+## Convert to coxph
+
+With the cross validation results the models are converted into coxph objects. This is a necessary step for computing the proportional hazards test.
+
+```{r coxph}
+
+fit_EN <- c() # Cox models 
+y <- Surv(y_train$time, as.numeric(y_train$status) - 1) # response variable for coxph
+
+for (i in 1:length(my.alpha)){
+  tryCatch({
+  fit_EN[i] <- list(
+    coxph(y ~ ., data = xdata.train[, cv_genes.EN[[i]]],
+                init = as.numeric(cv_coef.EN[[i]]), # specify coefficient values
+                iter.max = 0 # force the software to keep those values
+  ))
+  }, error=function(e){})
+}
+
+model.name_EN <- c()
+for (i in 1:length(my.alpha)) model.name_EN[i] <- paste0("EN Model ", i)  
+
+table <- cbind(model.name_EN, my.alpha, lengths(cv_genes.EN))
+colnames(table) <- c("Model", "Alpha", "Covariates")
+data.frame(table)
+
+```
+
+
+## Concordance Index (C-index)
+
+The C-index represents the model’s ability to correctly provide a reliable ranking of the survival times based on the individual risk scores. Similarly to the AUC, a value of 1 corresponds to the best model prediction, and a value of 0.5 represents a random prediction. 
+[Reference:
+https://square.github.io/pysurvival/metrics/c_index.html#:~:text=The%20concordance%20index%20or%20C-index%20is%20a%20generalization,survival%20times%20based%20on%20the%20individual%20risk%20scores.]
+
+```{r c_index}
+
+c.index.train_EN <- c() # c-index of the train data set 
+c.index.test_EN  <- c() # c-index of the test data set
+
+for (i in 1:length(my.alpha)){
+  c.index.train_EN[i] <- fit.cv.EN[[i]]$cvm[fit.cv.EN[[i]]$lambda == fit.cv.EN[[i]]$lambda.min]
+  pred <- predict(object = fit.cv.EN[[i]], xdata.test, type="response")
+  c.index.test_EN[i] <- apply(pred, 2, Cindex, y = ydata.test) 
+}
+
+table <- cbind(round(c.index.train_EN, 4), round(c.index.test_EN, 4))
+colnames(table) <- c("C.Index_train", "C.Index_test")
+data.frame(table)
+
+```
+
+# Overall Results
+
+```{r result_table}
+
+table_EN <- cbind(model.name_EN, my.alpha, round(lambda.1se.EN, 4), lengths(cv_genes.EN), 
+                  round(c.index.train_EN, 4), round(c.index.test_EN, 4), 
+                  round(pv_train, 4), round(pv_test, 4))
+colnames(table_EN) <- c("Model", "Alpha", "Lambda", "Covariates",
+                        "C.index_train", "C.index_test",
+                        "LR.pvalue_train", "LR.pvalue_test")
+(table_EN <- data.frame(table_EN))
+
+```
+
+Best selection: 6 

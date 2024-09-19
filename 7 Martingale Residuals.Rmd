@@ -1,0 +1,325 @@
+---
+title: "Martingale Residuals"
+author: "João Brandão"
+date: "2024-03-25"
+output: html_document
+---
+
+# Load Packages
+
+```{r}
+
+library(ggplot2)
+library(ggrepel)
+library(dplyr)
+library(survival)
+
+```
+
+
+# Elastic Net
+
+## Define Cox models
+
+The cox model is defined for all observations (training + test) so that the residuals for all observations are obtained.
+
+
+```{r cox_model}
+
+y <- Surv(ydata$time, as.numeric(ydata$status) - 1) # response variable for coxph
+
+coxph.EN <- coxph(y ~ ., data = xdata[, genes.EN],
+                init = as.numeric(cox.EN$coefficients), # specify coefficient values
+                iter.max = 0 # force the software to keep those values
+                )
+
+```
+
+
+## Calculate Martingale Residuals 
+
+```{r}
+
+# cox.EN$residuals == res.EN
+res.EN <- residuals(cox.EN, type= "martingale")
+
+```
+
+## Plot Residuals
+
+### Theme
+
+```{r theme_}
+
+My_Theme <- theme(
+  plot.title = element_text(size = 11, face="bold"),
+  axis.title.x = element_text(size = 10),
+  axis.text.x = element_text(size = 10),
+  axis.title.y = element_text(size = 10),
+  axis.text.y = element_text(size = 10))
+
+```
+
+### Scatter Plot
+
+```{r plot_residuals}
+
+n <- 10 # set to find the top n residuals
+
+title <- "Plot of residuals | Elastic Net - Model 6"
+
+# Data frame with the residual values of the respective observations
+df <- data.frame(cbind(1:length(res.EN), rownames(ydata), as.vector(res.EN)))
+colnames(df) <- c("index", "names", "residuals")
+df$index <- as.numeric(df$index)
+df$residuals <- as.numeric(df$residuals)
+
+# Indices of the observations with the highest residuals (absolute value)
+highest.indices <- order(abs(res.EN), decreasing = TRUE)[1:n]
+
+
+res_plot.EN <- ggplot(df, aes(x = index, y = residuals)) + 
+  geom_point() + 
+  geom_text_repel(aes(label = ifelse(index %in% highest.indices, names, '')),  segment.color = 'grey50', hjust = - 0.5, size = 3) +
+  theme_classic() + ggtitle(title) + ylab("Residuals") + My_Theme
+  
+res_plot.EN
+
+```
+
+### Box Plot
+
+```{r boxplot_residuals}
+
+title <- "BoxPlot of residuals | Elastic Net - Model 6"
+
+# Function to find the points outside the box plot whiskers
+find_outlier <- function(x) {
+  return(x < quantile(x, .25) - 1.5*IQR(x) | x > quantile(x, .75) + 1.5*IQR(x))
+}
+
+# Data frame with the residual values of the respective observations
+df <- data.frame(cbind(1:length(res.EN[[i]]), rownames(ydata), as.vector(res.EN)))
+colnames(df) <- c("index", "names", "residuals")
+df$index <- as.numeric(df$index)
+df$residuals <- as.numeric(df$residuals)
+
+
+# Add new column to data frame that indicates if each observation is an outlier
+df <- df %>%
+        mutate(outlier = ifelse(find_outlier(residuals), names, NA))
+
+
+res_boxplot.EN <- ggplot(df, aes(x = " ", y = residuals)) +
+  geom_boxplot() +
+  geom_text_repel(aes(label = outlier), na.rm=TRUE, hjust=-.0, size = 2.5) +
+  theme_classic() + ggtitle(title) + ylab("Residuals") + xlab("") + My_Theme + theme(aspect.ratio = 1)
+
+res_boxplot.EN
+
+```
+
+
+# Hub Cox
+
+## Define Cox models
+
+The cox model is defined for all observations (training + test) so that the residuals for all observations are obtained.
+
+
+```{r}
+
+y <- Surv(ydata$time, as.numeric(ydata$status) - 1) # response variable for coxph
+
+coxph.HC <- coxph(y ~ ., data = xdata[, genes.HC],
+                init = as.numeric(cox.HC$coefficients), # specify coefficient values
+                iter.max = 0 # force the software to keep those values
+                )
+
+```
+
+
+## Calculate Martingale Residuals 
+
+```{r}
+
+res.HC <- residuals(cox.HC, type= "martingale")
+summary(res.HC)
+
+```
+
+## Plot Residuals
+
+### Theme
+
+```{r theme_}
+
+My_Theme <- theme(
+  plot.title = element_text(size = 11, face="bold"),
+  axis.title.x = element_text(size = 10),
+  axis.text.x = element_text(size = 10),
+  axis.title.y = element_text(size = 10),
+  axis.text.y = element_text(size = 10))
+
+```
+
+### Scatter Plot
+
+```{r plot_residuals}
+
+n <- 10 # set to find the top n residuals
+
+title <- "Plot of residuals | Hub Cox - Model 9"
+
+# Data frame with the residual values of the respective observations
+df <- data.frame(cbind(1:length(res.HC), rownames(ydata), as.vector(res.HC)))
+colnames(df) <- c("index", "names", "residuals")
+df$index <- as.numeric(df$index)
+df$residuals <- as.numeric(df$residuals)
+
+# Indices of the observations with the highest residuals (absolute value)
+highest.indices <- order(abs(res.HC), decreasing = TRUE)[1:n]
+
+
+res_plot.HC <- ggplot(df, aes(x = index, y = residuals)) + 
+  geom_point() + 
+  geom_text_repel(aes(label = ifelse(index %in% highest.indices, names, '')),  segment.color = 'grey50', hjust = - 0.5, size = 3) +
+  theme_classic() + ggtitle(title) + ylab("Residuals") + My_Theme
+  
+res_plot.HC
+
+```
+
+### Box Plot
+
+```{r boxplot_residuals}
+
+title <- "BoxPlot of residuals | Hub Cox - Model 9"
+
+# Function to find the points outside the box plot whiskers
+find_outlier <- function(x) {
+  return(x < quantile(x, .25) - 1.5*IQR(x) | x > quantile(x, .75) + 1.5*IQR(x))
+}
+
+# Data frame with the residual values of the respective observations
+df <- data.frame(cbind(1:length(res.HC[[i]]), rownames(ydata), as.vector(res.HC)))
+colnames(df) <- c("index", "names", "residuals")
+df$index <- as.numeric(df$index)
+df$residuals <- as.numeric(df$residuals)
+
+
+# Add new column to data frame that indicates if each observation is an outlier
+df <- df %>%
+        mutate(outlier = ifelse(find_outlier(residuals), names, NA))
+
+
+res_boxplot.HC <- ggplot(df, aes(x = " ", y = residuals)) +
+  geom_boxplot() +
+  geom_text_repel(aes(label = outlier), na.rm=TRUE, hjust=-.0, size = 2.5) +
+  theme_classic() + ggtitle(title) + ylab("Residuals") + xlab("") + My_Theme + theme(aspect.ratio = 1)
+
+res_boxplot.HC
+
+```
+
+# Orphan Cox
+
+## Define Cox models
+
+The cox model is defined for all observations (training + test) so that the residuals for all observations are obtained.
+
+
+```{r}
+
+y <- Surv(ydata$time, as.numeric(ydata$status) - 1) # response variable for coxph
+
+coxph.OC <- coxph(y ~ ., data = xdata[, genes.OC],
+                init = as.numeric(cox.OC$coefficients), # specify coefficient values
+                iter.max = 0 # force the software to keep those values
+                )
+
+```
+
+
+## Calculate Martingale Residuals 
+
+```{r}
+
+res.OC <- residuals(cox.OC, type= "martingale")
+summary(res.OC)
+
+```
+
+## Plot Residuals
+
+### Theme
+
+```{r theme_}
+
+My_Theme <- theme(
+  plot.title = element_text(size = 11, face="bold"),
+  axis.title.x = element_text(size = 10),
+  axis.text.x = element_text(size = 10),
+  axis.title.y = element_text(size = 10),
+  axis.text.y = element_text(size = 10))
+
+```
+
+### Scatter Plot
+
+```{r plot_residuals}
+
+n <- 10 # set to find the top n residuals
+
+title <- "Plot of residuals | Orphan Cox - Model 7"
+
+# Data frame with the residual values of the respective observations
+df <- data.frame(cbind(1:length(res.OC), rownames(ydata), as.vector(res.OC)))
+colnames(df) <- c("index", "names", "residuals")
+df$index <- as.numeric(df$index)
+df$residuals <- as.numeric(df$residuals)
+
+# Indices of the observations with the highest residuals (absolute value)
+highest.indices <- order(abs(res.OC), decreasing = TRUE)[1:n]
+
+
+res_plot.OC <- ggplot(df, aes(x = index, y = residuals)) + 
+  geom_point() + 
+  geom_text_repel(aes(label = ifelse(index %in% highest.indices, names, '')),  segment.color = 'grey50', hjust = - 0.5, size = 3) +
+  theme_classic() + ggtitle(title) + ylab("Residuals") + My_Theme
+  
+res_plot.OC
+
+```
+
+### Box Plot
+
+```{r boxplot_residuals}
+
+title <- "BoxPlot of residuals | Orphan Cox - Model 7"
+
+# Function to find the points outside the box plot whiskers
+find_outlier <- function(x) {
+  return(x < quantile(x, .25) - 1.5*IQR(x) | x > quantile(x, .75) + 1.5*IQR(x))
+}
+
+# Data frame with the residual values of the respective observations
+df <- data.frame(cbind(1:length(res.OC[[i]]), rownames(ydata), as.vector(res.OC)))
+colnames(df) <- c("index", "names", "residuals")
+df$index <- as.numeric(df$index)
+df$residuals <- as.numeric(df$residuals)
+
+
+# Add new column to data frame that indicates if each observation is an outlier
+df <- df %>%
+        mutate(outlier = ifelse(find_outlier(residuals), names, NA))
+
+
+res_boxplot.OC <- ggplot(df, aes(x = " ", y = residuals)) +
+  geom_boxplot() +
+  geom_text_repel(aes(label = outlier), na.rm=TRUE, hjust=-.0, size = 2.5) +
+  theme_classic() + ggtitle(title) + ylab("Residuals") + xlab("") + My_Theme + theme(aspect.ratio = 1)
+
+res_boxplot.OC
+
+```

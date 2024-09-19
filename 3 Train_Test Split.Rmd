@@ -1,0 +1,89 @@
+---
+title: "Train_Test Split"
+author: "João Brandão"
+date: "2023-04-24"
+output: html_document
+---
+
+# Load packages
+
+```{r packages}
+
+library(survival)
+
+```
+
+
+
+# Split Train/Test Dataset
+
+The data is split into a train and test data frames. 
+
+```{r train_test_split}
+
+set.seed(11)
+n.train <- round(length(rownames(xdata.reduced))*0.7)
+train.id <- sample(1:length(rownames(xdata.reduced)), n.train) # Selecting random observations for the training dataset
+
+# Train data
+x_train  <- xdata.reduced[train.id,]
+y_train <- ydata[train.id,]
+x_train; y_train
+
+# Test data
+x_test <- xdata.reduced[-train.id,]
+y_test <- ydata[-train.id,]
+x_test; y_test
+
+
+```
+
+
+# Convert into data matrix
+
+In order to be used in the regularization techniques, the data frames are converted into data matrix.
+
+## Training
+
+```{r data_training}
+
+# Response Variable
+
+ydata.train <- data.matrix(y_train)
+# when transforming to a data matrix the status values alter to 1 (previously 0) and 2 (previously 1)
+ydata.train[,2] <- ydata.train[,2] - 1 # correction of the status values
+head(ydata.train)
+dim(ydata.train)
+
+y_CoxResp <- Surv(ydata.train[,1] , ydata.train[,2]) # for using in coxph
+y_train$status <- as.numeric(y_train$status) #for use in survival curves
+
+
+# Predictor Variables
+
+xdata.train <- data.matrix(x_train)
+xdata.train[1:5,1:5]
+dim(xdata.train)
+
+```
+
+## Testing
+ 
+```{r data_testing}
+
+# Response Variable
+
+ydata.test <- data.matrix(y_test)
+ydata.test[,2] <- ydata.test[,2] - 1 # correction of the status values
+head(ydata.test)
+dim(ydata.test)
+
+y_test$status <- as.numeric(y_test$status) - 1 #for use in survival curves
+
+
+# Predictor Variables
+xdata.test <- data.matrix(x_test)
+xdata.test[1:5,1:5]
+dim(xdata.test) 
+
+```
